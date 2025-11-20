@@ -1,101 +1,60 @@
-/* =================================
-   Socket Init
-================================= */
+const socket = io();
 
-const socket = io(window.location.origin); // FIXED for Render
-
-/* =================================
-   PAGE ELEMENTS
-================================= */
-
-// Login
+// Pages
 const loginPage = document.getElementById("loginPage");
 const auctionPage = document.getElementById("auctionPage");
 
+// Login inputs
 const createName = document.getElementById("createName");
 const joinName = document.getElementById("joinName");
 const joinRoomId = document.getElementById("joinRoomId");
 
+// Buttons
 document.getElementById("createRoomBtn").onclick = () => {
   if (!createName.value) return alert("Enter your name");
   socket.emit("createRoom", createName.value);
 };
-
 document.getElementById("joinRoomBtn").onclick = () => {
   if (!joinName.value || !joinRoomId.value) return alert("Enter all fields");
-  socket.emit("joinRoom", { roomId: joinRoomId.value.trim().toUpperCase(), name: joinName.value });
+  socket.emit("joinRoom", { roomId: joinRoomId.value.trim(), name: joinName.value });
 };
 
-// Auction Page
+// Auction page elements
 const roomIdDisplay = document.getElementById("roomIdDisplay");
 const startSpinBtn = document.getElementById("startSpinBtn");
 const wheel = document.getElementById("wheel");
-
-const playerCard = document.getElementById("playerCard");
 const playerNameBox = document.getElementById("playerName");
 const playerPosBox = document.getElementById("playerPos");
 const playerBaseBox = document.getElementById("playerBase");
-
 const initialTimerBox = document.getElementById("initialTimer");
 const bidTimerBox = document.getElementById("bidTimer");
-
 const bidBtn = document.getElementById("bidBtn");
 const skipBtn = document.getElementById("skipBtn");
 const universalSkipBtn = document.getElementById("universalSkipBtn");
-
-const logBox = document.getElementById("logBox");
 const summaryList = document.getElementById("summaryList");
-
-/* =================================
-   ROOM DATA (LOCAL)
-================================= */
 
 let currentRoom = null;
 let myId = null;
 
-/* =================================
-   SOCKET RESPONSES
-================================= */
+// Socket events
+socket.on("roomCreated", (roomId) => { currentRoom = roomId; joinAuctionPage(roomId); });
+socket.on("joinedRoom", (roomId) => { currentRoom = roomId; joinAuctionPage(roomId); });
+socket.on("error", (msg) => alert(msg));
+socket.on("roomState", (state) => renderRoomState(state));
+socket.on("spinStarted", () => spinWheel());
 
-// When room is created
-socket.on("roomCreated", ({ roomId }) => {
-  currentRoom = roomId;
-  joinAuctionPage(roomId);
-});
-
-// When joined room
-socket.on("joinedRoom", ({ roomId }) => {
-  currentRoom = roomId;
-  joinAuctionPage(roomId);
-});
-
-// When error occurs
-socket.on("errorMessage", (msg) => alert(msg));
-
-// When full room state updates
-socket.on("roomState", (state) => {
-  renderRoomState(state);
-});
-
-/* =================================
-   PAGE SWITCH
-================================= */
-
+// Page switch
 function joinAuctionPage(roomId) {
   loginPage.classList.add("hidden");
   auctionPage.classList.remove("hidden");
   roomIdDisplay.innerText = "Room ID — " + roomId;
 }
 
-/* =================================
-   RENDER UI BASED ON ROOM STATE
-================================= */
-
+// Render room state
 function renderRoomState(state) {
-  // Save ID
   if (!myId) myId = socket.id;
 
-  // Host UI control:
+  // Host controls
   if (myId === state.hostId) {
     startSpinBtn.style.display = "inline-block";
     universalSkipBtn.style.display = "inline-block";
@@ -119,100 +78,50 @@ function renderRoomState(state) {
   initialTimerBox.innerText = state.initialTimeLeft;
   bidTimerBox.innerText = state.bidTimeLeft;
 
-  // Disable bid button if conditions not met
-  if (!state.auctionActive || !state.currentPlayer) {
-    bidBtn.disabled = true;
-  } else {
+  // Bid button
+  if (!state.auctionActive || !state.currentPlayer) bidBtn.disabled = true;
+  else {
     const me = state.players[myId];
-    if (!me || me.team.length >= 11) {
-      bidBtn.disabled = true;
-    } else {
-
-      // next bid calculation
-      let nextBid =
-        state.currentBid === 0
-          ? state.currentPlayer.basePrice
-          : state.currentBid < 200
-          ? state.currentBid + 5
-          : state.currentBid + 10;
-
+    if (!me || me.team.length >= 11) bidBtn.disabled = true;
+    else {
+      let nextBid = state.currentBid === 0
+        ? state.currentPlayer.basePrice
+        : state.currentBid < 200 ? state.currentBid + 5 : state.currentBid + 10;
       bidBtn.innerText = "Bid " + nextBid + "M";
-
-      if (state.currentBidder === myId || me.balance < nextBid) {
-        bidBtn.disabled = true;
-      } else {
-        bidBtn.disabled = false;
-      }
+      bidBtn.disabled = (state.currentBidder === myId || me.balance < nextBid);
     }
   }
 
-  // Skip button active only during auction
   skipBtn.disabled = !(state.auctionActive && state.currentPlayer);
 
   // Summary
   renderSummary(state.players);
 }
 
-/* =================================
-   SUMMARY WITH CLICK-TO-EXPAND TEAMS
-================================= */
-
+// Render summary
 function renderSummary(players) {
   summaryList.innerHTML = "";
-
   for (let id in players) {
     let p = players[id];
-
     const div = document.createElement("div");
     div.className = "summary-player";
-
-    let balanceTxt = `${p.balance}M`;
-    let teamCountTxt = `${p.team.length}/11`;
-
     div.innerHTML = `
-      <div><b>${p.name}</b> — Balance: ${balanceTxt} — Players: ${teamCountTxt}</div>
-      <div class="player-team" id="team-${id}">
-        ${p.team.map(t => `${t.name} — ${t.price}M`).join("<br>")}
-      </div>
+      <div><b>${p.name}</b> — Balance: ${p.balance}M — Players: ${p.team.length}/11</div>
+      <div class="player-team" id="team-${id}">${p.team.map(t => `${t.name} — ${t.price}M`).join("<br>")}</div>
     `;
-
-    div.onclick = () => {
-      let box = document.getElementById("team-" + id);
-      box.classList.toggle("show");
-    };
-
+    div.onclick = () => document.getElementById("team-" + id).classList.toggle("show");
     summaryList.appendChild(div);
   }
 }
 
-/* =================================
-   BUTTON ACTIONS
-================================= */
+// Buttons
+startSpinBtn.onclick = () => { socket.emit("startSpin", currentRoom); spinWheel(); };
+bidBtn.onclick = () => socket.emit("bid", currentRoom);
+skipBtn.onclick = () => socket.emit("skip", currentRoom);
+universalSkipBtn.onclick = () => socket.emit("universalSkip", currentRoom);
 
-startSpinBtn.onclick = () => {
-  socket.emit("startSpin", currentRoom);
-  spinWheel();
-};
-
-bidBtn.onclick = () => {
-  socket.emit("bid", currentRoom);
-};
-
-skipBtn.onclick = () => {
-  socket.emit("skip", currentRoom);
-};
-
-universalSkipBtn.onclick = () => {
-  socket.emit("universalSkip", currentRoom);
-};
-
-/* =================================
-   WHEEL ANIMATION
-================================= */
-
+// Wheel animation
 function spinWheel() {
   wheel.classList.add("spin");
-  setTimeout(() => {
-    wheel.classList.remove("spin");
-  }, 2500);
+  setTimeout(() => wheel.classList.remove("spin"), 2500);
 }
