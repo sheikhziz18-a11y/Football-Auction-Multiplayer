@@ -69,4 +69,4 @@ io.on("connection", (socket) => {
       players: {},
       availablePlayers: JSON.parse(JSON.stringify(MASTER_PLAYERS)),
       currentPlayer: null,
-      currentPosition: nul
+      currentPosition: null
