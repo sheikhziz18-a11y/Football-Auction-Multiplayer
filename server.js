@@ -3,29 +3,23 @@ const http = require("http");
 const { Server } = require("socket.io");
 const fs = require("fs");
 
-// Load players once
+// Load master players
 let MASTER_PLAYERS = JSON.parse(fs.readFileSync("shuffled_players.json", "utf8"));
 
 const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 app.use(express.static("public"));
 
 /* ===========================
-   GAME STATE (PER ROOM)
+   GAME STATE
 =========================== */
 let rooms = {};
 
-/* ===========================
-   UTILITY FUNCTIONS
-=========================== */
 function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
@@ -60,7 +54,6 @@ function startTimers(roomId) {
   room.initialTimeLeft = 60;
   room.bidTimeLeft = 30;
 
-  // Initial countdown
   room.initialTimer = setInterval(() => {
     if (room.initialTimeLeft > 0) {
       room.initialTimeLeft--;
@@ -82,7 +75,6 @@ function startBidTimer(roomId) {
       broadcastRoomState(roomId);
     } else {
       clearInterval(room.bidTimer);
-      // Auto-skip player when bid time ends
       room.currentPlayer = null;
       room.currentPosition = null;
       room.currentBid = 0;
@@ -98,11 +90,11 @@ function startBidTimer(roomId) {
    SOCKET LOGIC
 =========================== */
 io.on("connection", (socket) => {
-  console.log("New connection:", socket.id);
+  console.log("Connected:", socket.id);
 
-  /* ---- CREATE ROOM ---- */
+  // Create room
   socket.on("createRoom", (name) => {
-    let roomId = generateRoomId();
+    const roomId = generateRoomId();
     rooms[roomId] = {
       hostId: socket.id,
       players: {},
@@ -117,45 +109,33 @@ io.on("connection", (socket) => {
       auctionActive: false
     };
 
-    rooms[roomId].players[socket.id] = {
-      name: name,
-      balance: 1000,
-      team: []
-    };
-
+    rooms[roomId].players[socket.id] = { name, balance: 1000, team: [] };
     socket.join(roomId);
     socket.emit("roomCreated", roomId);
     broadcastRoomState(roomId);
   });
 
-  /* ---- JOIN ROOM ---- */
+  // Join room
   socket.on("joinRoom", ({ roomId, name }) => {
     roomId = roomId.toUpperCase();
-    let room = rooms[roomId];
+    const room = rooms[roomId];
     if (!room) return socket.emit("error", "Room not found");
 
-    room.players[socket.id] = {
-      name: name,
-      balance: 1000,
-      team: []
-    };
-
+    room.players[socket.id] = { name, balance: 1000, team: [] };
     socket.join(roomId);
-    io.to(socket.id).emit("joinedRoom", roomId);
+    socket.emit("joinedRoom", roomId);
     broadcastRoomState(roomId);
   });
 
-  /* ---- START SPIN ---- */
+  // Start spin
   socket.on("startSpin", (roomId) => {
-    let room = rooms[roomId];
+    const room = rooms[roomId];
     if (!room || room.hostId !== socket.id) return;
-
     if (room.availablePlayers.length === 0) return;
 
     room.spinInProgress = true;
     io.to(roomId).emit("spinStarted");
 
-    // Pick next player
     const idx = Math.floor(Math.random() * room.availablePlayers.length);
     const player = room.availablePlayers.splice(idx, 1)[0];
 
@@ -169,20 +149,19 @@ io.on("connection", (socket) => {
     broadcastRoomState(roomId);
   });
 
-  /* ---- BID ---- */
+  // Bid
   socket.on("bid", (roomId) => {
-    let room = rooms[roomId];
+    const room = rooms[roomId];
     if (!room || !room.currentPlayer || !room.auctionActive) return;
 
     const me = room.players[socket.id];
     if (!me) return;
 
-    let nextBid =
-      room.currentBid === 0
-        ? room.currentPlayer.basePrice
-        : room.currentBid < 200
-        ? room.currentBid + 5
-        : room.currentBid + 10;
+    const nextBid = room.currentBid === 0
+      ? room.currentPlayer.basePrice
+      : room.currentBid < 200
+      ? room.currentBid + 5
+      : room.currentBid + 10;
 
     if (me.balance < nextBid) return;
 
@@ -192,9 +171,9 @@ io.on("connection", (socket) => {
     broadcastRoomState(roomId);
   });
 
-  /* ---- SKIP ---- */
+  // Skip
   socket.on("skip", (roomId) => {
-    let room = rooms[roomId];
+    const room = rooms[roomId];
     if (!room || !room.currentPlayer) return;
 
     room.currentPlayer = null;
@@ -207,9 +186,9 @@ io.on("connection", (socket) => {
     broadcastRoomState(roomId);
   });
 
-  /* ---- UNIVERSAL SKIP ---- */
+  // Universal skip (host only)
   socket.on("universalSkip", (roomId) => {
-    let room = rooms[roomId];
+    const room = rooms[roomId];
     if (!room || room.hostId !== socket.id) return;
 
     room.currentPlayer = null;
@@ -222,26 +201,20 @@ io.on("connection", (socket) => {
     broadcastRoomState(roomId);
   });
 
-  /* ---- DISCONNECT ---- */
+  // Disconnect
   socket.on("disconnect", () => {
     console.log("Disconnected:", socket.id);
-
     for (let roomId in rooms) {
-      let room = rooms[roomId];
+      const room = rooms[roomId];
       if (room.players[socket.id]) delete room.players[socket.id];
-
       if (room.hostId === socket.id) {
         const ids = Object.keys(room.players);
         room.hostId = ids[0] || null;
       }
-
       broadcastRoomState(roomId);
     }
   });
 });
 
-/* ===========================
-   START SERVER
-=========================== */
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
