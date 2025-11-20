@@ -1,5 +1,11 @@
+/* =================================
+   Socket Init
+================================= */
 const socket = io();
 
+/* =================================
+   PAGE ELEMENTS
+================================= */
 const loginPage = document.getElementById("loginPage");
 const auctionPage = document.getElementById("auctionPage");
 
@@ -31,11 +37,18 @@ const bidTimerBox = document.getElementById("bidTimer");
 const bidBtn = document.getElementById("bidBtn");
 const skipBtn = document.getElementById("skipBtn");
 
+const logBox = document.getElementById("logBox");
 const summaryList = document.getElementById("summaryList");
 
+/* =================================
+   ROOM DATA
+================================= */
 let currentRoom = null;
 let myId = null;
 
+/* =================================
+   SOCKET RESPONSES
+================================= */
 socket.on("roomCreated", (roomId) => {
   currentRoom = roomId;
   joinAuctionPage(roomId);
@@ -43,21 +56,29 @@ socket.on("roomCreated", (roomId) => {
 
 socket.on("error", (msg) => alert(msg));
 
-socket.on("roomState", (state) => renderRoomState(state));
+socket.on("roomState", (state) => {
+  renderRoomState(state);
+});
 
-socket.on("spinWheel", () => spinWheel());
-
+/* =================================
+   PAGE SWITCH
+================================= */
 function joinAuctionPage(roomId) {
   loginPage.classList.add("hidden");
   auctionPage.classList.remove("hidden");
   roomIdDisplay.innerText = "Room ID — " + roomId;
 }
 
+/* =================================
+   RENDER UI
+================================= */
 function renderRoomState(state) {
   if (!myId) myId = socket.id;
 
-  startSpinBtn.style.display = (myId === state.hostId) ? "inline-block" : "none";
+  // Host control
+  startSpinBtn.style.display = myId === state.hostId ? "inline-block" : "none";
 
+  // Player card
   if (state.currentPlayer) {
     playerNameBox.innerText = state.currentPlayer.name;
     playerPosBox.innerText = "(" + state.currentPosition + ")";
@@ -68,26 +89,35 @@ function renderRoomState(state) {
     playerBaseBox.innerText = "Base Price";
   }
 
+  // Timers
   initialTimerBox.innerText = state.initialTimeLeft;
   bidTimerBox.innerText = state.bidTimeLeft;
 
-  // Enable / disable bid
+  // Bid button
   if (!state.auctionActive || !state.currentPlayer) {
     bidBtn.disabled = true;
   } else {
     const me = state.players[myId];
     if (!me || me.team.length >= 11) bidBtn.disabled = true;
     else {
-      let nextBid = state.currentBid === 0 ? state.currentPlayer.basePrice
-        : state.currentBid < 200 ? state.currentBid + 5 : state.currentBid + 10;
+      let nextBid =
+        state.currentBid === 0
+          ? state.currentPlayer.basePrice
+          : state.currentBid < 200
+          ? state.currentBid + 5
+          : state.currentBid + 10;
       bidBtn.innerText = "Bid " + nextBid + "M";
-      bidBtn.disabled = (state.currentBidder === myId || me.balance < nextBid);
+      bidBtn.disabled = state.currentBidder === myId || me.balance < nextBid;
     }
   }
 
-  // Skip
+  // Skip button
   skipBtn.disabled = !(state.auctionActive && state.currentPlayer);
 
+  // Log
+  logBox.innerHTML = state.log.join("<br>");
+
+  // Summary
   renderSummary(state.players);
 }
 
@@ -97,8 +127,10 @@ function renderSummary(players) {
     let p = players[id];
     const div = document.createElement("div");
     div.className = "summary-player";
+    let balanceTxt = `${p.balance}M`;
+    let teamCountTxt = `${p.team.length}/11`;
     div.innerHTML = `
-      <div><b>${p.name}</b> — Balance: ${p.balance}M — Players: ${p.team.length}/11</div>
+      <div><b>${p.name}</b> — Balance: ${balanceTxt} — Players: ${teamCountTxt}</div>
       <div class="player-team" id="team-${id}">
         ${p.team.map(t => `${t.name} — ${t.price}M`).join("<br>")}
       </div>
@@ -108,11 +140,17 @@ function renderSummary(players) {
   }
 }
 
-startSpinBtn.onclick = () => socket.emit("startSpin", currentRoom);
-bidBtn.onclick = () => socket.emit("bid", currentRoom);
-skipBtn.onclick = () => socket.emit("skip", currentRoom);
+/* =================================
+   BUTTON ACTIONS
+================================= */
+startSpinBtn.onclick = () => {
+  socket.emit("startSpin", currentRoom);
+};
 
-function spinWheel() {
-  wheel.classList.add("spin");
-  setTimeout(() => wheel.classList.remove("spin"), 2500);
-}
+bidBtn.onclick = () => {
+  socket.emit("bid", currentRoom);
+};
+
+skipBtn.onclick = () => {
+  socket.emit("skip", currentRoom);
+};
