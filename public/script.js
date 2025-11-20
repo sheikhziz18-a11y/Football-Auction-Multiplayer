@@ -2,7 +2,7 @@
    Socket Init
 ================================= */
 
-const socket = io();
+const socket = io(window.location.origin); // FIXED for Render
 
 /* =================================
    PAGE ELEMENTS
@@ -23,7 +23,7 @@ document.getElementById("createRoomBtn").onclick = () => {
 
 document.getElementById("joinRoomBtn").onclick = () => {
   if (!joinName.value || !joinRoomId.value) return alert("Enter all fields");
-  socket.emit("joinRoom", { roomId: joinRoomId.value.trim(), name: joinName.value });
+  socket.emit("joinRoom", { roomId: joinRoomId.value.trim().toUpperCase(), name: joinName.value });
 };
 
 // Auction Page
@@ -58,15 +58,19 @@ let myId = null;
 ================================= */
 
 // When room is created
-socket.on("roomCreated", (roomId) => {
+socket.on("roomCreated", ({ roomId }) => {
+  currentRoom = roomId;
+  joinAuctionPage(roomId);
+});
+
+// When joined room
+socket.on("joinedRoom", ({ roomId }) => {
   currentRoom = roomId;
   joinAuctionPage(roomId);
 });
 
 // When error occurs
-socket.on("error", (msg) => {
-  alert(msg);
-});
+socket.on("errorMessage", (msg) => alert(msg));
 
 // When full room state updates
 socket.on("roomState", (state) => {
@@ -115,12 +119,7 @@ function renderRoomState(state) {
   initialTimerBox.innerText = state.initialTimeLeft;
   bidTimerBox.innerText = state.bidTimeLeft;
 
-  // Disable bid button if:
-  // - No active auction
-  // - No current player
-  // - Player is highest bidder
-  // - Player has 11 players
-  // - Player has no balance for next bid
+  // Disable bid button if conditions not met
   if (!state.auctionActive || !state.currentPlayer) {
     bidBtn.disabled = true;
   } else {
@@ -129,7 +128,7 @@ function renderRoomState(state) {
       bidBtn.disabled = true;
     } else {
 
-      // next bid calc
+      // next bid calculation
       let nextBid =
         state.currentBid === 0
           ? state.currentPlayer.basePrice
@@ -149,10 +148,6 @@ function renderRoomState(state) {
 
   // Skip button active only during auction
   skipBtn.disabled = !(state.auctionActive && state.currentPlayer);
-
-  // Log: show only changes
-  // (Simplified: append activity based on timers and bids)
-  // You may extend this if you want richer logs.
 
   // Summary
   renderSummary(state.players);
