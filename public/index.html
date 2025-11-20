@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Football Auction</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+<!-- ==============================
+     LOGIN PAGE
+============================== -->
+<div id="loginPage" class="page">
+  <div class="login-container">
+    <h1 class="title">FOOTBALL AUCTION</h1>
+
+    <div class="login-box">
+      <h2>Create a Room</h2>
+      <input id="createName" placeholder="Your Name" />
+      <button id="createRoomBtn">CREATE</button>
+    </div>
+
+    <div class="login-box">
+      <h2>Join a Room</h2>
+      <input id="joinName" placeholder="Your Name" />
+      <input id="joinRoomId" placeholder="Enter Room ID" />
+      <button id="joinRoomBtn">JOIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==============================
+     AUCTION PAGE
+============================== -->
+<div id="auctionPage" class="page hidden">
+
+  <!-- ROOM ID -->
+  <div class="top-bar">
+    <div id="roomIdDisplay">Room: -----</div>
+    <button id="startSpinBtn" class="host-only">Start Spin</button>
+  </div>
+
+  <div class="main-layout">
+
+    <!-- LEFT SIDE: WHEEL + PLAYER CARD -->
+    <div class="left-panel">
+
+      <!-- WHEEL -->
+      <div class="wheel-section">
+        <div id="wheel" class="wheel"></div>
+      </div>
+
+      <!-- AUCTIONED PLAYER -->
+      <div class="player-card" id="playerCard">
+        <div id="playerName">Player Name</div>
+        <div id="playerPos">Position</div>
+        <div id="playerBase">Base Price</div>
+      </div>
+    </div>
+
+    <!-- RIGHT SIDE: TIMERS + BUTTONS + LOG -->
+    <div class="right-panel">
+
+      <!-- TIMERS -->
+      <div class="timers-box">
+        <div class="timer" id="initialTimerBox">
+          <div class="timer-label">Initial Timer</div>
+          <div id="initialTimer">60</div>
+        </div>
+
+        <div class="timer" id="bidTimerBox">
+          <div class="timer-label">Per-Bid Timer</div>
+          <div id="bidTimer">30</div>
+        </div>
+      </div>
+
+      <!-- BUTTONS -->
+      <div class="buttons-box">
+        <button id="bidBtn">Bid</button>
+        <button id="skipBtn">Skip</button>
+      </div>
+
+      <button id="universalSkipBtn" class="host-only uskip">Universal Skip</button>
+
+      <!-- LOG -->
+      <div class="log-box" id="logBox"></div>
+    </div>
+  </div>
+
+  <!-- SUMMARY BOX + PLAYER LIST -->
+  <div class="summary-panel">
+    <h2>Summary</h2>
+    <div id="summaryList"></div>
+  </div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
