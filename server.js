@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -10,10 +11,7 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 app.use(express.static("public"));
@@ -37,6 +35,7 @@ function resetTimers(room) {
 
 function broadcastRoomState(roomId) {
   const room = rooms[roomId];
+  if (!room) return;
   io.to(roomId).emit("roomState", {
     players: room.players,
     hostId: room.hostId,
@@ -56,17 +55,22 @@ function pickRandomPlayerByPosition(room, position) {
   const candidates = room.availablePlayers.filter(p => p.position === position);
   if (candidates.length === 0) return null;
   const idx = Math.floor(Math.random() * candidates.length);
-  const player = candidates.splice(idx, 1)[0];
+  // remove selected from availablePlayers
+  const player = candidates[idx];
   room.availablePlayers = room.availablePlayers.filter(p => p !== player);
   return player;
 }
 
 function startInitialTimer(roomId) {
   const room = rooms[roomId];
+  if (!room) return;
+  if (room.initialTimer) clearInterval(room.initialTimer);
+  room.initialTimeLeft = 60;
   room.initialTimer = setInterval(() => {
     room.initialTimeLeft--;
     if (room.initialTimeLeft <= 0) {
       clearInterval(room.initialTimer);
+      room.initialTimer = null;
       room.auctionActive = false;
       endCurrentPlayer(roomId);
     }
@@ -76,12 +80,14 @@ function startInitialTimer(roomId) {
 
 function startBidTimer(roomId) {
   const room = rooms[roomId];
+  if (!room) return;
   if (room.bidTimer) clearInterval(room.bidTimer);
   room.bidTimeLeft = 30;
   room.bidTimer = setInterval(() => {
     room.bidTimeLeft--;
     if (room.bidTimeLeft <= 0) {
       clearInterval(room.bidTimer);
+      room.bidTimer = null;
       room.auctionActive = false;
       endCurrentPlayer(roomId);
     }
@@ -91,63 +97,85 @@ function startBidTimer(roomId) {
 
 function endCurrentPlayer(roomId) {
   const room = rooms[roomId];
+  if (!room) return;
   const player = room.currentPlayer;
   const bidderId = room.currentBidder;
 
   if (bidderId && player) {
     // Assign player to bidder
-    room.players[bidderId].team.push({
-      name: player.name,
-      price: room.currentBid
-    });
-    room.players[bidderId].balance -= room.currentBid;
-    room.log.push(`${room.players[bidderId].name} won ${player.name} for ${room.currentBid}M`);
+    if (!room.players[bidderId]) {
+      room.log.push(`Winner disconnected; ${player.name} unsold`);
+    } else {
+      room.players[bidderId].team.push({
+        name: player.name,
+        price: room.currentBid
+      });
+      room.players[bidderId].balance -= room.currentBid;
+      room.log.push(`${room.players[bidderId].name} won ${player.name} for ${room.currentBid}M`);
+    }
   } else if (player) {
     room.log.push(`${player.name} was unsold`);
   }
 
-  // Reset current player
+  // Reset current player (do NOT auto-spin; host must press Start Spin)
   room.currentPlayer = null;
   room.currentBid = 0;
   room.currentBidder = null;
   room.currentPosition = null;
   room.auctionActive = false;
+  resetTimers(room);
 
   broadcastRoomState(roomId);
-
-  // Small delay before spinning wheel
-  setTimeout(() => {
-    spinWheel(roomId);
-  }, 2000);
+  // **No auto spin** - host must press Start Spin
 }
 
 function spinWheel(roomId) {
   const room = rooms[roomId];
-  if (room.availablePlayers.length === 0) return;
-
-  room.spinInProgress = true;
-
-  const positions = ["GK", "CB", "RB", "LB", "RW", "CF", "AM", "LW", "CM", "DM"];
-  const position = positions[Math.floor(Math.random() * positions.length)];
-  const player = pickRandomPlayerByPosition(room, position);
-
-  if (!player) {
-    room.spinInProgress = false;
+  if (!room) return;
+  if (room.availablePlayers.length === 0) {
+    room.log.push("No players left in pool");
     broadcastRoomState(roomId);
     return;
   }
 
-  room.currentPlayer = player;
-  room.currentPosition = position;
+  room.spinInProgress = true;
+  room.auctionActive = false;
+  room.currentPlayer = null;
+  room.currentPosition = null;
   room.currentBid = 0;
   room.currentBidder = null;
-  room.auctionActive = true;
   resetTimers(room);
-
   broadcastRoomState(roomId);
-  room.spinInProgress = false;
 
-  startInitialTimer(roomId);
+  // positions array; order is important for wheel slices (10 slices)
+  const positions = ["GK", "CB", "RB", "LB", "RW", "CF", "AM", "LW", "CM", "DM"];
+  const chosenIndex = Math.floor(Math.random() * positions.length);
+  const position = positions[chosenIndex];
+
+  // pick player (removes from availablePlayers)
+  const player = pickRandomPlayerByPosition(room, position);
+
+  // after small delay to allow client wheel animation, we set current player
+  // but we need to inform clients immediately which slice index they should animate to
+  // emit wheelResult with index + position; clients will animate and then request state/receive later
+  io.to(roomId).emit("wheelResult", { index: chosenIndex, position });
+
+  // set a short timeout (2.5s) to mirror wheel animation time before revealing player and starting timers
+  setTimeout(() => {
+    room.spinInProgress = false;
+    if (!player) {
+      broadcastRoomState(roomId);
+      return;
+    }
+    room.currentPlayer = player;
+    room.currentPosition = position;
+    room.currentBid = 0;
+    room.currentBidder = null;
+    room.auctionActive = true;
+    room.log.push(`Wheel picked position ${position} → ${player.name} (${player.basePrice}M)`);
+    broadcastRoomState(roomId);
+    startInitialTimer(roomId);
+  }, 2500);
 }
 
 /* ===========================
@@ -181,32 +209,45 @@ io.on("connection", (socket) => {
       team: []
     };
     socket.join(roomId);
-    socket.emit("roomCreated", roomId);
+    socket.emit("roomJoined", roomId); // tell creator they joined & switch UI
     broadcastRoomState(roomId);
   });
 
   socket.on("joinRoom", ({ roomId, name }) => {
     const room = rooms[roomId];
     if (!room) return socket.emit("error", "Room not found");
-    if (room.players[socket.id]) return; // Already in room
+    if (room.players[socket.id]) return socket.emit("roomJoined", roomId); // already joined
+    // limit room size to 6
+    if (Object.keys(room.players).length >= 6) return socket.emit("error", "Room is full");
     room.players[socket.id] = {
       name,
       balance: 1000,
       team: []
     };
     socket.join(roomId);
+    socket.emit("roomJoined", roomId); // inform joining client to switch UI
+    room.log.push(`${name} joined the room`);
     broadcastRoomState(roomId);
   });
 
   socket.on("startSpin", (roomId) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    // only host can start
+    if (socket.id !== room.hostId) return;
+    // don't start if spin already in progress or auction active
+    if (room.spinInProgress || room.auctionActive) return;
     spinWheel(roomId);
   });
 
   socket.on("bid", (roomId) => {
     const room = rooms[roomId];
-    if (!room.auctionActive || !room.currentPlayer) return;
+    if (!room || !room.auctionActive || !room.currentPlayer) return;
 
-    const player = room.players[socket.id];
+    if (!room.players[socket.id]) return;
+
+    const playerObj = room.players[socket.id];
+
     let nextBid =
       room.currentBid === 0
         ? room.currentPlayer.basePrice
@@ -214,42 +255,64 @@ io.on("connection", (socket) => {
         ? room.currentBid + 5
         : room.currentBid + 10;
 
-    if (player.balance < nextBid) return;
+    if (playerObj.balance < nextBid) {
+      socket.emit("error", "Insufficient balance");
+      return;
+    }
+
+    // first bid: stop initial timer and start bid timer
+    if (room.currentBid === 0) {
+      if (room.initialTimer) {
+        clearInterval(room.initialTimer);
+        room.initialTimer = null;
+      }
+      startBidTimer(roomId);
+    } else {
+      // reset bid timer to 30s
+      room.bidTimeLeft = 30;
+    }
 
     room.currentBid = nextBid;
     room.currentBidder = socket.id;
-    room.log.push(`${player.name} bid ${nextBid}M for ${room.currentPlayer.name}`);
-
-    startBidTimer(roomId);
+    room.log.push(`${playerObj.name} bid ${nextBid}M for ${room.currentPlayer.name}`);
     broadcastRoomState(roomId);
   });
 
   socket.on("skip", (roomId) => {
     const room = rooms[roomId];
-    if (!room.auctionActive || !room.currentPlayer) return;
+    if (!room || !room.auctionActive || !room.currentPlayer) return;
+    if (!room.players[socket.id]) return;
 
     if (!room.skippedPlayers.includes(socket.id)) {
       room.skippedPlayers.push(socket.id);
-      const player = room.players[socket.id];
-      room.log.push(`${player.name} skipped ${room.currentPlayer.name}`);
+      room.log.push(`${room.players[socket.id].name} skipped ${room.currentPlayer.name}`);
     }
-
-    // If everyone skipped, end player
+    // if everyone skipped -> end
     const totalPlayers = Object.keys(room.players).length;
     if (room.skippedPlayers.length === totalPlayers) {
-      clearInterval(room.initialTimer);
-      clearInterval(room.bidTimer);
+      if (room.initialTimer) { clearInterval(room.initialTimer); room.initialTimer = null; }
+      if (room.bidTimer) { clearInterval(room.bidTimer); room.bidTimer = null; }
       endCurrentPlayer(roomId);
     }
-
     broadcastRoomState(roomId);
   });
 
   socket.on("disconnect", () => {
     for (const roomId in rooms) {
       const room = rooms[roomId];
+      if (!room) continue;
       if (room.players[socket.id]) {
+        // preserve player data but mark absent: do NOT delete so state remains for others
+        // we will keep player entry but flag as disconnected by setting name suffix (optional)
+        // For simplicity we keep the entry; it will rejoin if same socket id returns (unlikely)
         delete room.players[socket.id];
+        room.log.push(`A player disconnected`);
+        // if host left -> transfer host to first remaining player (if any)
+        if (room.hostId === socket.id) {
+          const remaining = Object.keys(room.players);
+          room.hostId = remaining.length ? remaining[0] : null;
+          if (room.hostId) room.log.push(`${room.players[room.hostId].name} is now host`);
+        }
         broadcastRoomState(roomId);
       }
     }
