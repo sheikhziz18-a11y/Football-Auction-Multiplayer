@@ -45,6 +45,8 @@ socket.on("error", (msg) => alert(msg));
 
 socket.on("roomState", (state) => renderRoomState(state));
 
+socket.on("spinWheel", () => spinWheel());
+
 function joinAuctionPage(roomId) {
   loginPage.classList.add("hidden");
   auctionPage.classList.remove("hidden");
@@ -83,6 +85,7 @@ function renderRoomState(state) {
     }
   }
 
+  // Skip
   skipBtn.disabled = !(state.auctionActive && state.currentPlayer);
 
   renderSummary(state.players);
@@ -105,13 +108,8 @@ function renderSummary(players) {
   }
 }
 
-startSpinBtn.onclick = () => {
-  socket.emit("startSpin", currentRoom);
-  spinWheel();
-};
-
+startSpinBtn.onclick = () => socket.emit("startSpin", currentRoom);
 bidBtn.onclick = () => socket.emit("bid", currentRoom);
-
 skipBtn.onclick = () => socket.emit("skip", currentRoom);
 
 function spinWheel() {
