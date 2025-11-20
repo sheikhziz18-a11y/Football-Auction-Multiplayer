@@ -1,273 +1,223 @@
-/* ===============================
-   GLOBAL
-=============================== */
+/* =================================
+   Socket Init
+================================= */
 
-body {
-  margin: 0;
-  padding: 0;
-  background: white;
-  font-family: Arial, sans-serif;
+const socket = io();
+
+/* =================================
+   PAGE ELEMENTS
+================================= */
+
+// Login
+const loginPage = document.getElementById("loginPage");
+const auctionPage = document.getElementById("auctionPage");
+
+const createName = document.getElementById("createName");
+const joinName = document.getElementById("joinName");
+const joinRoomId = document.getElementById("joinRoomId");
+
+document.getElementById("createRoomBtn").onclick = () => {
+  if (!createName.value) return alert("Enter your name");
+  socket.emit("createRoom", createName.value);
+};
+
+document.getElementById("joinRoomBtn").onclick = () => {
+  if (!joinName.value || !joinRoomId.value) return alert("Enter all fields");
+  socket.emit("joinRoom", { roomId: joinRoomId.value.trim(), name: joinName.value });
+};
+
+// Auction Page
+const roomIdDisplay = document.getElementById("roomIdDisplay");
+const startSpinBtn = document.getElementById("startSpinBtn");
+const wheel = document.getElementById("wheel");
+
+const playerCard = document.getElementById("playerCard");
+const playerNameBox = document.getElementById("playerName");
+const playerPosBox = document.getElementById("playerPos");
+const playerBaseBox = document.getElementById("playerBase");
+
+const initialTimerBox = document.getElementById("initialTimer");
+const bidTimerBox = document.getElementById("bidTimer");
+
+const bidBtn = document.getElementById("bidBtn");
+const skipBtn = document.getElementById("skipBtn");
+const universalSkipBtn = document.getElementById("universalSkipBtn");
+
+const logBox = document.getElementById("logBox");
+const summaryList = document.getElementById("summaryList");
+
+/* =================================
+   ROOM DATA (LOCAL)
+================================= */
+
+let currentRoom = null;
+let myId = null;
+
+/* =================================
+   SOCKET RESPONSES
+================================= */
+
+// When room is created
+socket.on("roomCreated", (roomId) => {
+  currentRoom = roomId;
+  joinAuctionPage(roomId);
+});
+
+// When error occurs
+socket.on("error", (msg) => {
+  alert(msg);
+});
+
+// When full room state updates
+socket.on("roomState", (state) => {
+  renderRoomState(state);
+});
+
+/* =================================
+   PAGE SWITCH
+================================= */
+
+function joinAuctionPage(roomId) {
+  loginPage.classList.add("hidden");
+  auctionPage.classList.remove("hidden");
+  roomIdDisplay.innerText = "Room ID — " + roomId;
 }
 
-.hidden {
-  display: none;
-}
+/* =================================
+   RENDER UI BASED ON ROOM STATE
+================================= */
 
-.page {
-  width: 100%;
-  height: 100%;
-}
+function renderRoomState(state) {
+  // Save ID
+  if (!myId) myId = socket.id;
 
-/* ===============================
-   LOGIN PAGE
-=============================== */
-
-.login-container {
-  width: 100%;
-  max-width: 600px;
-  margin: auto;
-  padding-top: 40px;
-  text-align: center;
-}
-
-.title {
-  font-size: 40px;
-  margin-bottom: 20px;
-}
-
-.login-box {
-  border: 1px solid #ccc;
-  padding: 20px;
-  margin: 15px 0;
-  border-radius: 10px;
-  background: #f7f7f7;
-}
-
-.login-box input {
-  width: 80%;
-  margin-bottom: 10px;
-  padding: 10px;
-  font-size: 16px;
-}
-
-.login-box button {
-  width: 85%;
-  padding: 10px;
-  font-size: 18px;
-  background: black;
-  color: white;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-/* ===============================
-   TOP BAR
-=============================== */
-
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  padding: 15px;
-  font-size: 20px;
-  background: #ececec;
-  border-bottom: 2px solid #ccc;
-}
-
-.host-only {
-  background: black;
-  color: white;
-  border: none;
-  padding: 10px 14px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-/* ===============================
-   MAIN LAYOUT (DESKTOP)
-=============================== */
-
-.main-layout {
-  display: flex;
-  padding: 20px;
-}
-
-.left-panel {
-  width: 50%;
-}
-
-.right-panel {
-  width: 50%;
-}
-
-/* ===============================
-   WHEEL
-=============================== */
-
-.wheel-section {
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-.wheel {
-  width: 220px;
-  height: 220px;
-  margin: auto;
-  border-radius: 50%;
-  border: 8px solid black;
-  background: conic-gradient(
-      #ffe600 0 36deg,
-      #ff5757 36deg 72deg,
-      #7afcff 72deg 108deg,
-      #b1ff7a 108deg 144deg,
-      #ffca7a 144deg 180deg,
-      #c77aff 180deg 216deg,
-      #7affb1 216deg 252deg,
-      #ff7ada 252deg 288deg,
-      #7a9cff 288deg 324deg,
-      #ff9e7a 324deg 360deg
-  );
-  animation-duration: 2.5s;
-  animation-fill-mode: forwards;
-}
-
-.spin {
-  animation-name: spinAnim;
-}
-
-@keyframes spinAnim {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(2000deg); }
-}
-
-/* ===============================
-   PLAYER CARD
-=============================== */
-
-.player-card {
-  border: 2px solid black;
-  padding: 20px;
-  text-align: center;
-  border-radius: 12px;
-  background: white;
-  font-size: 18px;
-}
-
-.player-card div {
-  margin: 8px 0;
-}
-
-/* ===============================
-   TIMERS
-=============================== */
-
-.timers-box {
-  display: flex;
-  gap: 10px;
-}
-
-.timer {
-  border: 2px solid black;
-  padding: 8px;
-  text-align: center;
-  width: 120px;
-  border-radius: 10px;
-  background: transparent;
-}
-
-.timer-label {
-  font-size: 14px;
-}
-
-#initialTimer,
-#bidTimer {
-  font-size: 24px;
-  font-weight: bold;
-}
-
-/* ===============================
-   BUTTONS
-=============================== */
-
-.buttons-box {
-  margin-top: 15px;
-  display: flex;
-  gap: 10px;
-}
-
-#bidBtn, #skipBtn {
-  flex: 1;
-  padding: 12px;
-  font-size: 18px;
-  background: black;
-  color: white;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.uskip {
-  margin-top: 15px;
-  background: red !important;
-}
-
-/* ===============================
-   LOG BOX
-=============================== */
-
-.log-box {
-  margin-top: 20px;
-  border: 2px solid black;
-  height: 200px;
-  overflow-y: scroll;
-  padding: 10px;
-  background: #f5f5f5;
-}
-
-/* ===============================
-   SUMMARY PANEL
-=============================== */
-
-.summary-panel {
-  margin: 20px;
-  padding: 20px;
-  border-top: 2px solid black;
-}
-
-.summary-player {
-  border: 1px solid #aaa;
-  margin-bottom: 8px;
-  padding: 10px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.player-team {
-  margin-top: 5px;
-  padding-left: 15px;
-  display: none;
-}
-
-.player-team.show {
-  display: block;
-}
-
-/* ===============================
-   MOBILE LAYOUT
-=============================== */
-
-@media (max-width: 700px) {
-  .main-layout {
-    flex-direction: column;
+  // Host UI control:
+  if (myId === state.hostId) {
+    startSpinBtn.style.display = "inline-block";
+    universalSkipBtn.style.display = "inline-block";
+  } else {
+    startSpinBtn.style.display = "none";
+    universalSkipBtn.style.display = "none";
   }
 
-  .left-panel, .right-panel {
-    width: 100%;
+  // Player card
+  if (state.currentPlayer) {
+    playerNameBox.innerText = state.currentPlayer.name;
+    playerPosBox.innerText = "(" + state.currentPosition + ")";
+    playerBaseBox.innerText = "Base Price: " + state.currentPlayer.basePrice + "M";
+  } else {
+    playerNameBox.innerText = "Player Name";
+    playerPosBox.innerText = "Position";
+    playerBaseBox.innerText = "Base Price";
   }
 
-  .buttons-box {
-    flex-direction: row;
+  // Timers
+  initialTimerBox.innerText = state.initialTimeLeft;
+  bidTimerBox.innerText = state.bidTimeLeft;
+
+  // Disable bid button if:
+  // - No active auction
+  // - No current player
+  // - Player is highest bidder
+  // - Player has 11 players
+  // - Player has no balance for next bid
+  if (!state.auctionActive || !state.currentPlayer) {
+    bidBtn.disabled = true;
+  } else {
+    const me = state.players[myId];
+    if (!me || me.team.length >= 11) {
+      bidBtn.disabled = true;
+    } else {
+
+      // next bid calc
+      let nextBid =
+        state.currentBid === 0
+          ? state.currentPlayer.basePrice
+          : state.currentBid < 200
+          ? state.currentBid + 5
+          : state.currentBid + 10;
+
+      bidBtn.innerText = "Bid " + nextBid + "M";
+
+      if (state.currentBidder === myId || me.balance < nextBid) {
+        bidBtn.disabled = true;
+      } else {
+        bidBtn.disabled = false;
+      }
+    }
   }
 
-  .summary-panel {
-    margin-bottom: 120px;
+  // Skip button active only during auction
+  skipBtn.disabled = !(state.auctionActive && state.currentPlayer);
+
+  // Log: show only changes
+  // (Simplified: append activity based on timers and bids)
+  // You may extend this if you want richer logs.
+
+  // Summary
+  renderSummary(state.players);
+}
+
+/* =================================
+   SUMMARY WITH CLICK-TO-EXPAND TEAMS
+================================= */
+
+function renderSummary(players) {
+  summaryList.innerHTML = "";
+
+  for (let id in players) {
+    let p = players[id];
+
+    const div = document.createElement("div");
+    div.className = "summary-player";
+
+    let balanceTxt = `${p.balance}M`;
+    let teamCountTxt = `${p.team.length}/11`;
+
+    div.innerHTML = `
+      <div><b>${p.name}</b> — Balance: ${balanceTxt} — Players: ${teamCountTxt}</div>
+      <div class="player-team" id="team-${id}">
+        ${p.team.map(t => `${t.name} — ${t.price}M`).join("<br>")}
+      </div>
+    `;
+
+    div.onclick = () => {
+      let box = document.getElementById("team-" + id);
+      box.classList.toggle("show");
+    };
+
+    summaryList.appendChild(div);
   }
+}
+
+/* =================================
+   BUTTON ACTIONS
+================================= */
+
+startSpinBtn.onclick = () => {
+  socket.emit("startSpin", currentRoom);
+  spinWheel();
+};
+
+bidBtn.onclick = () => {
+  socket.emit("bid", currentRoom);
+};
+
+skipBtn.onclick = () => {
+  socket.emit("skip", currentRoom);
+};
+
+universalSkipBtn.onclick = () => {
+  socket.emit("universalSkip", currentRoom);
+};
+
+/* =================================
+   WHEEL ANIMATION
+================================= */
+
+function spinWheel() {
+  wheel.classList.add("spin");
+  setTimeout(() => {
+    wheel.classList.remove("spin");
+  }, 2500);
 }
